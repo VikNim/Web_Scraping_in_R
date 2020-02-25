@@ -1,0 +1,121 @@
+library(rvest)
+library(stringr)
+
+base_url <<-  'https://academic.oup.com/'
+field_names = "DOI, Title, Authors, Author Affiliations, Corresponding Author, Corresponding Authors Email, Publication Date, Abstract, Keywords, Full Text"
+write.table(field_names, "DNA Research.txt", append = TRUE, eol = '\n',row.names = TRUE,col.names = FALSE)
+
+scrape_pages = function(article_urls)
+{
+  for (article in article_urls)
+  {
+    # We will be scraping every article here.
+    tryCatch(
+      {
+        article_page = read_html(str_c(base_url, article))
+      
+        doi_link = article_page %>% html_node(xpath='//a[contains(@href,"doi.org")]') %>% html_text()
+        doi = gsub('[/]','_', trimws(gsub(" ?(ht)tp(s?)://(.*)[.][a-z]+/", "", doi_link)))
+        
+        title = trimws(article_page %>% html_node(xpath='//div[@class="widget-items"]/h1') %>% html_text())
+        
+        authors = trimws(gsub('(\\r|\\t|\\n)','', article_page %>% html_nodes(xpath='//div[@class="wi-authors"]/..//a[@class="linked-name"]') %>% html_text()))
+        
+        author_affiliations = trimws(gsub('(\\r|\\t|\\n)','', article_page %>% html_nodes(xpath='//div[@class="wi-authors"]/..//div[@class="info-card-affilitation"]') %>% html_text()))
+        
+        corresponding_author = trimws(gsub('(\\r|\\t|\\n)','', article_page %>% html_nodes(xpath='//div[@class="wi-authors"]/..//a[@class="linked-name"]') %>% html_text()))
+
+        corresponding_authors_email = 'NA'
+        
+        publication_date = trimws(article_page %>% html_node(xpath = '//div[@class="citation-date"]') %>% html_text())
+        
+        abstract = trimws(article_page %>% html_nodes(xpath='//section[@class="abstract"]/p') %>% html_text())
+        
+        keywords = trimws(article_page %>% html_nodes(xpath='//div[@class="kwd-group"]/*') %>% html_text())
+        
+        full_text = trimws(article_page %>% html_node(xpath='//div[@data-widgetname="ArticleFulltext"]') %>% html_text())
+
+        # Saving an HTML Page
+        article_file_name = str_c(doi, ".html")
+        save_html_page = paste(as.character(article_page), collapse = regex('(\\r|\\t|\\n)'))
+        write.table(save_html_page, file=article_file_name, quote = FALSE,col.names = FALSE,row.names = FALSE)
+
+        # Saving Record Details in TXT file 
+        record = Reduce(str_c, c(doi, title, authors, author_affiliations, corresponding_author, corresponding_authors_email, publication_date, abstract, keywords, full_text))
+        # str_c(str_c(str_c(str_c(str_c(str_c(str_c(str_c(str_c(doi, title, sep = ','),authors, sep = ','),author_affiliations, sep=','),corresponding_author, sep = ','),corresponding_authors_email, sep=','), publication_date, sep=','), abstract,sep=','), keywords, sep=','), full_text, sep=',')
+        
+        write.table(as.character(record), file = "DNA Research.txt", append = TRUE, eol = '\n',row.names = FALSE,col.names = FALSE)
+      },
+      error = function(e){
+            message('Caught an error while scraping - Main For Loop!')
+            print(e)
+        },
+        warning = function(w){
+            message('Caught an warning while scraping - Main For Loop!')
+            print(w)
+        },
+        finally = {
+            message('All done, quitting.')
+        }
+    )
+
+  }
+}
+
+main_function = function()
+{
+  # The following code is commented since we don't want to scrape every article for every year
+  # journal_url = read_html("https://academic.oup.com/dnaresearch/issue-archive")
+  # number_of_years = journal_url %>% html_nodes(xpath='//main[@id="main"]/section/div/div/div/div/a') %>% html_attr('href')
+  
+  number_of_years = str_c(base_url, 'dnaresearch/issue-archive/', 2005:2019) # We are scraping article from 2005 tp 2019
+
+  for (year in number_of_years)
+  {
+    # page_url = str_c(base_url, year)
+    # TryCatch block so the execution should not be stopped..!
+    tryCatch(
+      {
+        # Fetching URLs of every volume for particular year
+        volume_links = read_html(year) %>% html_nodes(xpath='//div[@id="item_ResourceLink"]/a') %>% html_attr('href')
+      
+        for (volume in volume_links)
+        {
+          tryCatch(
+            {
+              volume_page = read_html(str_c(base_url, volume))
+              
+              # Fetching Article URLs for particular volume
+              article_urls = volume_page %>% html_nodes(xpath = '//div[@id="resourceTypeList-OUP_Issue"]/..//a[contains(@href,"/article/")]') %>% html_attr('href')
+              scrape_pages(article_urls)
+            },
+            error = function(e){
+              message('Caught an error in year loop!')
+              print(e)
+            },
+            warning = function(w){
+              message('Caught an warning in year loop!')
+              print(w)
+            },
+            finally = {
+              message('All done, quitting.')
+            }
+          )
+        }
+      },
+      error = function(e){
+            message('Caught an error in year loop!')
+            print(e)
+      },
+      warning = function(w){
+          message('Caught an warning in year loop!')
+          print(w)
+      },
+      finally = {
+          message('All done, quitting.')
+      }
+    )
+  }
+}
+
+main_function()
